@@ -35,5 +35,8 @@
   },
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "@azure/storage-blob": "^12.16.0"
+  }
 }
