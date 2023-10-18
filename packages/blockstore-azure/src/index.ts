@@ -62,13 +62,14 @@ export class AzureBlockstore extends BaseBlockstore {
     async get (key: CID, options?: AbortOptions): Promise<Uint8Array> {
         try {
             // getting blob name from the azure client
-            const blobName = await this.azureClient.getBlobName(key, { abortSignal: options?.signal });
-
-            // getting blob client from the azure client
-            const blobClient = await this.azureClient.getBlockBlobClient(blobName, { abortSignal: options?.signal });
+            const blobName = await this.azureClient.getBlobName(key, { abortSignal: options?.signal });            
 
             // downloading the blob
-            const response = await blobClient.download(0, undefined, { abortSignal: options?.signal });
+            const response = await this.azureClient.download(0, undefined, { abortSignal: options?.signal });
+
+            if (!response.readableStreamBody) {
+                throw new Error("Readable stream is not available.");
+            }
 
             // reading the stream as uint8 array and returning it
             return this.readStreamAsUint8Array(response.readableStreamBody);
@@ -103,14 +104,8 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async has (key: CID, options?: AbortOptions): Promise<boolean> {
         try {
-            // Getting blob name from the azure client
-            const blobName = await this.azureClient.getBlobName(key, { abortSignal: options?.signal });
-
-            // Getting blob client from the azure client
-            const blobClient = this.azureClient.getBlockBlobClient(blobName, { abortSignal: options?.signal });
-
             // Check if the blob exists
-            const blobProperties = await blobClient.getProperties({ abortSignal: options?.signal });
+            const blobProperties = await this.azureClient.getProperties({ abortSignal: options?.signal });
 
             // If the blob exists, return true; otherwise, return false;
             return blobProperties === null ? false : true;
@@ -135,14 +130,8 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async delete (key: CID, options?: AbortOptions): Promise<void> {
         try {
-            // Getting blob name from the azure client
-            const blobName = await this.azureClient.getBlobName(key, { abortSignal: options?.signal });
-
-            // Getting blob client from the azure client
-            const blobClient = this.azureClient.getBlockBlobClient(blobName, { abortSignal: options?.signal });
-
             // Delete the blob
-            await blobClient.delete({ abortSignal: options?.signal });
+            await this.azureClient.delete({ abortSignal: options?.signal });
 
         } catch (err: any) {
             throw Errors.deleteFailedError(err)
