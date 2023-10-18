@@ -3,6 +3,7 @@ import * as Errors from 'blockstore-core/errors'
 import { NextToLast, type ShardingStrategy } from "./sharding.js"
 import type { AbortOptions } from "interface-store"
 import { BlockBlobClient } from "@azure/storage-blob"
+import { BlobServiceClient } from "@azure/storage-blob"
 import type { Pair } from "interface-blockstore"
 import type { CID } from 'multiformats/cid'
 
@@ -61,11 +62,11 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async get (key: CID, options?: AbortOptions): Promise<Uint8Array> {
         try {
-            // getting blob name from the azure client
-            const blobName = await this.azureClient.getBlobName(key, { abortSignal: options?.signal });            
-
+            
+            const blobClient = await this.getBlobClient(key);
             // downloading the blob
-            const response = await this.azureClient.download(0, undefined, { abortSignal: options?.signal });
+            const response = await blobClient.download(0, undefined, { 
+                abortSignal: options?.signal });
 
             if (!response.readableStreamBody) {
                 throw new Error("Readable stream is not available.");
@@ -99,16 +100,31 @@ export class AzureBlockstore extends BaseBlockstore {
     }
 
 
+    private async getBlobClient (key: CID): Promise<BlockBlobClient> {
+        // Set the blob name based on the key
+        const blobName = key.toString();
+
+        // Construct the URL with the dynamically provided blob name
+        const blobUrl = `${this.azureClient.url}/${this.container}/${blobName}`;
+        
+        // Create a BlockBlobClient with the dynamically constructed URL
+        const blockBlobClient = new BlockBlobClient(blobUrl);
+
+        return blockBlobClient;
+    }
+
     /**
      * Check for the existence of the given key
      */
     async has (key: CID, options?: AbortOptions): Promise<boolean> {
         try {
-            // Check if the blob exists
-            const blobProperties = await this.azureClient.getProperties({ abortSignal: options?.signal });
+            const blobClient = await this.getBlobClient(key);
+
+            // Check if the blob exist
+            const blobExists = blobClient.exists({ abortSignal: options?.signal });            
 
             // If the blob exists, return true; otherwise, return false;
-            return blobProperties === null ? false : true;
+            return blobExists;
             
         } catch (err: any) {
             // doesn't exist and permission policy includes list container
@@ -130,8 +146,11 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async delete (key: CID, options?: AbortOptions): Promise<void> {
         try {
+
+            const blobClient = await this.getBlobClient(key);
+
             // Delete the blob
-            await this.azureClient.delete({ abortSignal: options?.signal });
+            await blobClient.delete({ abortSignal: options?.signal });
 
         } catch (err: any) {
             throw Errors.deleteFailedError(err)
@@ -142,12 +161,12 @@ export class AzureBlockstore extends BaseBlockstore {
         // TODO: ask about this params
         //const params: Record<string, any> = {}
 
-        try {
-            // Getting container client from the azure client
-            const containerClient = this.azureClient.getContainerClient(this.container);
+        try { 
+            // Create a BlobServiceClient using the container URL
+            const containerServiceClient = await this.getContainerClient();
 
             // Use the `listBlobsFlat` method to list all blobs in the container
-            const blobItems = containerClient.listBlobsFlat({ abortSignal: options?.signal });
+            const blobItems = containerServiceClient.getContainerClient(this.container).listBlobsFlat({ abortSignal: options?.signal });
 
             // Iterate over the blobs and print the name and length of each
             for await (const blobItem of blobItems) {
@@ -164,22 +183,34 @@ export class AzureBlockstore extends BaseBlockstore {
         }
     }
 
+    private async getContainerClient (): Promise<BlobServiceClient> {
+        const containerUrl = `${this.azureClient.url}/${this.container}`;
+
+        // Create a BlobServiceClient using the container URL
+        const containerServiceClient = new BlobServiceClient(containerUrl);
+        
+        return containerServiceClient;
+    }
+
     /**
      * This will check the Azure blob storage container to ensure access and existence
      */
     async open (options?: AbortOptions): Promise<void> {
         try {
-            // Getting container client from the azure client
-            const containerClient = this.azureClient.getContainerClient(this.container);
+
+            // Create a BlobServiceClient using the container URL
+            const containerServiceClient = this.getContainerClient();
 
             // Use the `getProperties` method to check if the container exists
-            await containerClient.getProperties({ abortSignal: options?.signal });
+            (await containerServiceClient).getProperties({ abortSignal: options?.signal });
 
         } catch (err: any) {
+            const containerServiceClient = this.getContainerClient();
+
             if (err.statusCode !== 404) {
                 if (this.createIfMissing) {
                     // Optionally, create the container if it doesn't exist
-                    await this.azureClient.getContainerClient(this.container).create({ abortSignal: options?.signal });
+                    (await containerServiceClient).getContainerClient(this.container).create({ abortSignal: options?.signal });
                 }
                 else {
                     // If not set to create, throw an error
@@ -189,7 +220,7 @@ export class AzureBlockstore extends BaseBlockstore {
             else {
                 // The container does not exist, and createIfMissing is true
                 if (this.createIfMissing) {
-                    await this.azureClient.getContainerClient(this.container).create({ abortSignal: options?.signal });
+                    (await containerServiceClient).getContainerClient(this.container).create({ abortSignal: options?.signal });
                 } else {
                     throw Errors.openFailedError(err);
                 }
