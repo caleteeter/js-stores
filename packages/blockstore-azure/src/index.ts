@@ -2,7 +2,7 @@ import { BaseBlockstore } from "blockstore-core/base"
 import * as Errors from 'blockstore-core/errors'
 import { NextToLast, type ShardingStrategy } from "./sharding.js"
 import type { AbortOptions } from "interface-store"
-import { ContainerClient, BlobServiceClient } from "@azure/storage-blob"
+import { ContainerClient } from "@azure/storage-blob"
 import type { Pair } from "interface-blockstore"
 import type { CID } from 'multiformats/cid'
 
@@ -26,17 +26,13 @@ export class AzureBlockstore extends BaseBlockstore {
     private readonly azureClient: ContainerClient
     private readonly shardingStrategy: ShardingStrategy
 
-    constructor (containerClient: ContainerClient, blobServiceClient: BlobServiceClient, init?: AzureBlockstoreInit) {
+    constructor (containerClient: ContainerClient, init?: AzureBlockstoreInit) {
         super()
 
         if (containerClient == null) {
             throw new Error('An Azure container client must be supplied. See the blockstore-azure README for examples.')
         }
-
-        if (blobServiceClient == null) {
-            throw new Error('An Azure block service client must be supplied. See the blockstore-azure README for examples.')
-        }
-
+        
         this.azureClient = containerClient
         this.createIfMissing = init?.createIfMissing ?? false
         this.shardingStrategy = init?.shardingStrategy ?? new NextToLast()
