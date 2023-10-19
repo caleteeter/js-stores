@@ -36,6 +36,9 @@ export class AzureBlockstore extends BaseBlockstore {
         this.azureClient = containerClient
         this.createIfMissing = init?.createIfMissing ?? false
         this.shardingStrategy = init?.shardingStrategy ?? new NextToLast()
+
+        // Create the container if it doesn't exist
+        this.azureClient.createIfNotExists();
     }
 
     /**
