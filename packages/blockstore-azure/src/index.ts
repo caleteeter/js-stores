@@ -2,7 +2,7 @@ import { BaseBlockstore } from "blockstore-core/base"
 import * as Errors from 'blockstore-core/errors'
 import { NextToLast, type ShardingStrategy } from "./sharding.js"
 import type { AbortOptions } from "interface-store"
-import { BlockBlobClient } from "@azure/storage-blob"
+import { BlobServiceClient, ContainerClient } from "@azure/storage-blob"
 import type { CID } from 'multiformats/cid'
 
 export interface AzureBlockstoreInit {
@@ -22,11 +22,10 @@ export interface AzureBlockstoreInit {
  */
 export class AzureBlockstore extends BaseBlockstore {
     public createIfMissing: boolean
-    private readonly azureClient: BlockBlobClient
-    private readonly container: string
+    private readonly azureClient: ContainerClient
     private readonly shardingStrategy: ShardingStrategy
 
-    constructor (azureClient: BlockBlobClient, container: string, init?: AzureBlockstoreInit) {
+    constructor (azureClient: BlobServiceClient, container: string, init?: AzureBlockstoreInit) {
         super()
 
         if (azureClient == null) {
@@ -37,10 +36,12 @@ export class AzureBlockstore extends BaseBlockstore {
             throw new Error('A container must be supplied. See the blockstore-azure README for examples.')
         }
 
-        this.azureClient = azureClient
-        this.container = container
+        this.azureClient = azureClient.getContainerClient(container)
         this.createIfMissing = init?.createIfMissing ?? false
         this.shardingStrategy = init?.shardingStrategy ?? new NextToLast()
+
+        // create container if not existing
+        this.azureClient.createIfNotExists();
     }
 
     /**
@@ -48,7 +49,8 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async put (key: CID, val: Uint8Array, options?: AbortOptions): Promise<CID> {
         try {
-            await this.azureClient.uploadData(val, { metadata: { key: this.shardingStrategy.encode(key) }, abortSignal: options?.signal });
+            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key))
+            await blobClient.uploadData(val)
             return key;
         } catch (err: any) {
             throw Errors.putFailedError(err)
@@ -60,7 +62,9 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async get (key: CID, options?: AbortOptions): Promise<Uint8Array> {
         try {
-            // 
+            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key))
+            const dlBuffer = await blobClient.downloadToBuffer(0, undefined)
+            return new Uint8Array(dlBuffer.buffer);
         } catch (err: any) {
             if (err.statusCode === 404) {
                 throw Errors.notFoundError(err)
@@ -74,7 +78,8 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async has (key: CID, options?: AbortOptions): Promise<boolean> {
         try {
-            // add azure implementation
+            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key))
+            return await blobClient.exists();
         } catch (err: any) {
             // doesn't exist and permission policy includes list container
             if (err.$metadata?.httpStatusCode === 404) {
@@ -95,37 +100,30 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async delete (key: CID, options?: AbortOptions): Promise<void> {
         try {
-            // add azure implementation
+            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key))
+            await blobClient.deleteIfExists({ deleteSnapshots: 'include'});
         } catch (err: any) {
             throw Errors.deleteFailedError(err)
         }
     }
 
+    /*
     async * getAll (options?: AbortOptions): AsyncIterable<Pair> {
-        const params: Record<string, any> = {}
-
         try {
             while (true) {
-                // add azure implementation
+                const iterator = this.azureClient.listBlobsFlat()
+                for await (const item of iterator) {
+                    const cid = this.shardingStrategy.decode(item.name)
+                    yield {
+                        cid,
+                        block: await this.get(cid, options)
+                    }
+                }
+                break
             }
         } catch (err: any) {
             throw new Error(err.code)
         }
     }
-
-    /**
-     * This will check the Azure blob storage container to ensure access and existence
-     */
-    async open (options?: AbortOptions): Promise<void> {
-        try {
-            // add azure implementation
-        } catch (err: any) {
-            if (err.statusCode !== 404) {
-                if (this.createIfMissing) {
-                    // add azure implementation
-                }
-                throw Errors.openFailedError(err)
-            }
-        }
-    }
+    */
 }

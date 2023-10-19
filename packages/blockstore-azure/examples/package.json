@@ -1,0 +1,21 @@
+{
+    "name": "helia",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "@azure/storage-blob": "^12.16.0",
+      "@helia/unixfs": "^1.2.0",
+      "datastore-s3": "../../",
+      "helia": "^1.0.0",
+      "it-to-buffer": "^3.0.1"
+    }
+  }
+  
