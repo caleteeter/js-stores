@@ -85,7 +85,8 @@ export class AzureBlockstore extends BaseBlockstore {
             if (err.statusCode === 404) {
                 throw Errors.notFoundError(err);
             }
-            throw err;
+            // Return a rejected promise in case of an error
+            return Promise.reject(err);
         }
     }
 
