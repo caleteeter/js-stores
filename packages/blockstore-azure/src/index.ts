@@ -2,7 +2,7 @@ import { BaseBlockstore } from "blockstore-core/base"
 import * as Errors from 'blockstore-core/errors'
 import { NextToLast, type ShardingStrategy } from "./sharding.js"
 import type { AbortOptions } from "interface-store"
-import { ContainerClient } from "@azure/storage-blob"
+import { BlobServiceClient, ContainerClient } from "@azure/storage-blob"
 import type { Pair } from "interface-blockstore"
 import type { CID } from 'multiformats/cid'
 
@@ -23,22 +23,30 @@ export interface AzureBlockstoreInit {
  */
 export class AzureBlockstore extends BaseBlockstore {
     public createIfMissing: boolean
-    private readonly azureClient: ContainerClient
+    private readonly azureClient: BlobServiceClient
+    private readonly container: string
     private readonly shardingStrategy: ShardingStrategy
+    private readonly containerClient: ContainerClient
 
-    constructor (containerClient: ContainerClient, init?: AzureBlockstoreInit) {
+    constructor (blobServiceClient: BlobServiceClient, container: string,  init?: AzureBlockstoreInit) {
         super()
 
-        if (containerClient == null) {
-            throw new Error('An Azure container client must be supplied. See the blockstore-azure README for examples.')
+        if (blobServiceClient == null) {
+            throw new Error('An Azure blob service client must be supplied. See the blockstore-azure README for examples.')
+        }
+
+        if (container == null) {
+            throw new Error('An Azure blob container name must be supplied. See the blockstore-azure README for examples.')
         }
         
-        this.azureClient = containerClient
+        this.azureClient = blobServiceClient
+        this.container = container
         this.createIfMissing = init?.createIfMissing ?? false
         this.shardingStrategy = init?.shardingStrategy ?? new NextToLast()
 
         // Create the container if it doesn't exist
-        this.azureClient.createIfNotExists();
+        this.containerClient = this.azureClient.getContainerClient(this.container);
+        this.containerClient.createIfNotExists();
     }
 
     /**
@@ -46,7 +54,7 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async put (key: CID, val: Uint8Array, options?: AbortOptions): Promise<CID> {
         try {
-            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key));
+            const blobClient = this.containerClient.getBlockBlobClient(this.shardingStrategy.encode(key));
             await blobClient.uploadData(val, { metadata: { key: this.shardingStrategy.encode(key) }, 
             abortSignal: options?.signal });
             return key;
@@ -61,7 +69,7 @@ export class AzureBlockstore extends BaseBlockstore {
     async get (key: CID, options?: AbortOptions): Promise<Uint8Array> {
         try {
 
-            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key));
+            const blobClient = this.containerClient.getBlockBlobClient(this.shardingStrategy.encode(key));
             // downloading the blob
             const response = await blobClient.download(0, undefined, { 
                 abortSignal: options?.signal });
@@ -103,7 +111,7 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async has (key: CID, options?: AbortOptions): Promise<boolean> {
         try {
-            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key));
+            const blobClient = this.containerClient.getBlockBlobClient(this.shardingStrategy.encode(key));
             // Check if the blob exist
             const blobExists = blobClient.exists({ abortSignal: options?.signal });            
 
@@ -130,7 +138,7 @@ export class AzureBlockstore extends BaseBlockstore {
      */
     async delete (key: CID, options?: AbortOptions): Promise<void> {
         try {
-            const blobClient = this.azureClient.getBlockBlobClient(this.shardingStrategy.encode(key));
+            const blobClient = this.containerClient.getBlockBlobClient(this.shardingStrategy.encode(key));
 
             // Delete the blob
             await blobClient.delete({ abortSignal: options?.signal });
@@ -144,7 +152,7 @@ export class AzureBlockstore extends BaseBlockstore {
         try {
             while (true){ 
             // Use the `listBlobsFlat` method to list all blobs in the container
-            const blobItems = this.azureClient.listBlobsFlat({ abortSignal: options?.signal });
+            const blobItems = this.containerClient.listBlobsFlat({ abortSignal: options?.signal });
 
             // Iterate over the blobs and print the name and length of each
             for await (const blobItem of blobItems) {
@@ -175,7 +183,7 @@ export class AzureBlockstore extends BaseBlockstore {
             if (err.statusCode !== 404) {
                 if (this.createIfMissing) {
                     // Optionally, create the container if it doesn't exist
-                    await this.azureClient.create({ abortSignal: options?.signal });
+                    await this.containerClient.create({ abortSignal: options?.signal });
                 }
                 else {
                     // If not set to create, throw an error
@@ -185,7 +193,7 @@ export class AzureBlockstore extends BaseBlockstore {
             else {
                 // The container does not exist, and createIfMissing is true
                 if (this.createIfMissing) {
-                    await this.azureClient.create({ abortSignal: options?.signal });
+                    await this.containerClient.create({ abortSignal: options?.signal });
                 } else {
                     throw Errors.openFailedError(err);
                 }
