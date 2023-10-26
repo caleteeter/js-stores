@@ -48,6 +48,7 @@ export class AzureDatastore extends BaseDatastore {
      */
     async get (key: Key, options?: AbortOptions): Promise<Uint8Array> {
         try {
+            return new Uint8Array();
             // add Azure table read
         } catch (err: any) {
             if (err.statusCode  === 404) {
