@@ -33,36 +33,8 @@ export const mockBlobServiceClient = (): sinon.SinonStubbedInstance<BlobServiceC
 
 export const mockContainerClient = (): sinon.SinonStubbedInstance<ContainerClient> => {
     const mock = sinon.createStubInstance(ContainerClient);
-    mock.getBlobClient.returns(mockBlockBlobClient());
+    mock.getBlockBlobClient.returns(mockBlockBlobClient());
     mock.createIfNotExists.resolves(azureResolve({ succeeded: true }));
-
-    // Create an async generator function that yields the blobs
-    async function* mockGenerator() {
-        yield* [{ name: 'blob1' }, { name: 'blob2' }];
-    }
-
-    // Create a stub that returns the generator function
-    mock.listBlobsFlat.callsFake(() => {
-        const iterator = mockGenerator();
-
-        // Creating a mock of PagedAsyncIterableIterator
-        const pagedIterator = {
-            [Symbol.asyncIterator]() {
-                return iterator;
-            },
-            byPage: () => {
-                return {
-                    [Symbol.asyncIterator]() {
-                        return (async function*() {
-                            yield { segment: { blobItems: [{ name: 'blob1' }, { name: 'blob2' }] } };
-                        })();
-                    }
-                };
-            }
-        };
-
-        return pagedIterator;
-    });
 
     return mock;
 };
@@ -111,28 +83,12 @@ export const mockBlockBlobClient = (): sinon.SinonStubbedInstance<BlockBlobClien
 
         // Optionally, add more conditions to simulate other error scenarios
     });
-
     // Mocking the exists method
     mock.exists.callsFake((options) => {
         // Simulate blob existence based on some condition or test setup
-        if (/* condition to simulate blob existence */) {
-            return azureResolve(true);
-        }
-
-        // Simulate a 404 not found error
-        if (options.simulateNotFoundError) {
-            const error = new AzureBlobError('Blob not found', 'NotFound', 404);
-            error.$metadata = { httpStatusCode: 404 };
-            return azureResolve(false);
-        }
-
-        // Simulate a 403 forbidden error
-        if (options.simulateForbiddenError) {
-            const error = new AzureBlobError('Forbidden', 'Forbidden', 403);
-            error.$metadata = { httpStatusCode: 403 };
-            return azureResolve(false);
-        }
-
+        // if (/* condition to simulate blob existence */) {
+        //     return azureResolve(true);
+        // }
         // Default behavior (can be adjusted based on your test requirements)
         return azureResolve(false);
 
@@ -142,14 +98,14 @@ export const mockBlockBlobClient = (): sinon.SinonStubbedInstance<BlockBlobClien
     // Inside mockBlockBlobClient
     mock.delete.callsFake((options) => {
     // Simulate deletion based on conditions or test setup
-    if (/* condition to simulate successful deletion */) {
-        return azureResolve();
-    }
+    // if (/* condition to simulate successful deletion */) {
+    //     return azureResolve();
+    // }
 
-    // Simulate an error during deletion
-    if (options.simulateDeleteError) {
-        return azureReject(new AzureBlobError('Delete failed', 'DeleteError', 500));
-    }
+    // // Simulate an error during deletion
+    // if (options.simulateDeleteError) {
+    //     return azureReject(new AzureBlobError('Delete failed', 'DeleteError', 500));
+    // }
 
     return azureResolve();
     });
@@ -157,9 +113,9 @@ export const mockBlockBlobClient = (): sinon.SinonStubbedInstance<BlockBlobClien
     // Inside mockContainerClient
     mock.getProperties.callsFake((options) => {
         // Simulate checking container properties
-        if (/* condition to simulate container exists */) {
-            return azureResolve(/* container properties */);
-        }
+        // if (/* condition to simulate container exists */) {
+        //     return azureResolve(/* container properties */);
+        // }
 
         // Simulate container does not exist
         return azureReject(new AzureBlobError('Container not found', 'NotFound', 404));

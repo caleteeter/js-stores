@@ -4,24 +4,23 @@ import { expect } from 'aegir/chai'
 import sinon from 'sinon';
 import { AzureBlockstore } from '../src/index';
 import { mockBlobServiceClient, mockContainerClient, AzureBlobError, mockBlockBlobClient } from './utils/azure-mock';
-import { BlobServiceClient, ContainerClient, BlobClient } from '@azure/storage-blob';
+import { BlobServiceClient, ContainerClient, BlockBlobClient } from '@azure/storage-blob';
 import { CID } from 'multiformats/cid'
 import { sha256 } from 'multiformats/hashes/sha2';
 
 const mockCID = await generateTestCID();
 
 describe('AzureBlockstore', () => {
-    let blockstore: AzureBlockstore;
+    let blockStore: AzureBlockstore;
     let blobServiceClientMock: sinon.SinonStubbedInstance<BlobServiceClient>;
     let containerClientMock: sinon.SinonStubbedInstance<ContainerClient>;
-    let blobClientMock: sinon.SinonStubbedInstance<BlobClient>;
-    
+    let blobClientMock: sinon.SinonStubbedInstance<BlockBlobClient>;   
 
     beforeEach(() => {
         blobServiceClientMock = mockBlobServiceClient();
         containerClientMock = mockContainerClient();
         blobClientMock = mockBlockBlobClient();
-        blockstore = new AzureBlockstore( blobServiceClientMock, 'containerName' );
+        blockStore = new AzureBlockstore( blobServiceClientMock, 'containerName' );
     });
 
     afterEach(() => {
@@ -31,43 +30,59 @@ describe('AzureBlockstore', () => {
     // Test: Successful blob upload
     it('should upload a blob successfully', async () => {
         const data = Buffer.from('test data');
-        await blockstore.put(mockCID, data);  // Assuming this method exists
-        sinon.assert.calledWith(containerClientMock.getBlobClient, mockCID.toString());
+        await blockStore.put(mockCID, data);  // Assuming this method exists
+        sinon.assert.calledWith(containerClientMock.getBlockBlobClient, mockCID.toString());
         sinon.assert.calledWith(blobClientMock.uploadData, data);
+        
     });
 
     // Test: Handle errors in blob upload
-    it('should handle errors in blob upload', async () => {
-        const data = Buffer.from('test data');
-        const uploadStub = sinon.stub().rejects(new AzureBlobError('Error uploading', 'UploadError', 500));
-        containerClientMock.getBlobClient.returns({ uploadData: uploadStub });
+    // Test: Handle errors in blob upload
+it('should handle errors in blob upload', async () => {
+    const data = Buffer.from('test data');
+    const blobClientStub = sinon.createStubInstance(BlockBlobClient);
+    blobClientStub.uploadData.rejects(new AzureBlobError('Error uploading', 'UploadError', 500));
+    containerClientMock.getBlockBlobClient.returns(blobClientStub);
 
-        try {
-            await blockstore.put(mockCID, data);
-            expect.fail('Expected error was not thrown');
-        } catch (error) {
-            expect(error).to.be.instanceOf(AzureBlobError);
-            expect(error.code).to.equal('UploadError');
-        }
-    });
+    try {
+        await blockStore.put(mockCID, data);
+        expect.fail('Expected error was not thrown');
+    } catch (error) {
+        expect(error).to.be.instanceOf(AzureBlobError);
+        expect(error.code).to.equal('UploadError');
+    }
+});
+
 
     // Test: Successful blob download
     it('should download a blob successfully', async () => {
         const expectedData = Buffer.from('test data');
-        const data = await blockstore.get(mockCID);  // Assuming this method exists
+    
+        // Stub for getBlobClient
+        const blobClientStub = sinon.createStubInstance(BlockBlobClient);
+        containerClientMock.getBlobClient.returns(blobClientStub);
+    
+        // Spy for the download method
+        const downloadSpy = sinon.spy(blobClientStub, 'download');
+    
+        // Perform the action
+        const data = await blockStore.get(mockCID);  // Assuming this method exists
+    
+        // Assertions
         sinon.assert.calledWith(containerClientMock.getBlobClient, mockCID.toString());
-        sinon.assert.calledOnce(containerClientMock.getBlobClient(mockCID.toString()).download());
+        sinon.assert.calledOnce(downloadSpy);
         expect(data).to.deep.equal(expectedData);
     });
+    
 
     // Test: Handle errors in blob download
     it('should handle errors in blob download', async () => {
-        const blobClientStub = sinon.createStubInstance(BlobClient);
+        const blobClientStub = sinon.createStubInstance(BlockBlobClient);
         blobClientStub.downloadToBuffer.rejects(new AzureBlobError('Error downloading', 'DownloadError', 500));
         containerClientMock.getBlobClient.returns(blobClientStub);
     
         try {
-            await blockstore.get(mockCID);
+            await blockStore.get(mockCID);
             expect.fail('Expected error was not thrown');
         } catch (error) {
             expect(error).to.be.instanceOf(AzureBlobError);
@@ -77,18 +92,38 @@ describe('AzureBlockstore', () => {
 
     // Test: Successful blob deletion
     it('should delete a blob successfully', async () => {
-        await blockstore.delete(mockCID);  // Assuming this method exists
-        sinon.assert.calledWith(containerClientMock.getBlobClient, mockCID);
-        sinon.assert.calledOnce(blobServiceClientMock.delete);
+        // Assuming mockCID.toString() returns the appropriate string identifier for the blob
+        const blobIdentifier = mockCID.toString();
+    
+        // Stub for getBlobClient
+        const blobClientStub = sinon.createStubInstance(BlockBlobClient);
+        containerClientMock.getBlobClient.returns(blobClientStub);
+    
+        // Spy for the delete method
+        const deleteSpy = sinon.spy(blobClientStub, 'delete');
+    
+        // Perform the delete action
+        await blockStore.delete(mockCID);
+    
+        // Assertions
+        sinon.assert.calledWith(containerClientMock.getBlobClient, blobIdentifier);
+        sinon.assert.calledOnce(deleteSpy);
     });
+    
 
     // Test: Handle errors in blob deletion
     it('should handle errors in blob deletion', async () => {
-        const deleteStub = sinon.stub().rejects(new AzureBlobError('Error deleting', 'DeleteError', 500));
-        containerClientMock.getBlobClient.returns({ delete: deleteStub });
-
+        // Create a stubbed instance of BlobClient
+        const blobClientStub = sinon.createStubInstance(BlockBlobClient);
+    
+        // Stub the delete method to reject with an error
+        blobClientStub.delete.rejects(new AzureBlobError('Error deleting', 'DeleteError', 500));
+    
+        // Return the stubbed instance when getBlobClient is called
+        containerClientMock.getBlobClient.returns(blobClientStub);
+    
         try {
-            await blockstore.delete(mockCID);
+            await blockStore.delete(mockCID);
             expect.fail('Expected error was not thrown');
         } catch (error) {
             expect(error).to.be.instanceOf(AzureBlobError);
