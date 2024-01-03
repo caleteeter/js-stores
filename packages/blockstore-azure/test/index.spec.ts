@@ -48,8 +48,14 @@ it('should handle errors in blob upload', async () => {
         await blockStore.put(mockCID, data);
         expect.fail('Expected error was not thrown');
     } catch (error) {
-        expect(error).to.be.instanceOf(AzureBlobError);
-        expect(error.code).to.equal('UploadError');
+        if (error instanceof AzureBlobError) {
+            // Now TypeScript knows 'error' is of type 'AzureBlobError'
+            expect(error).to.be.instanceOf(AzureBlobError);
+            expect(error.code).to.equal('UploadError');
+        } else {
+            // Handle other types of errors or rethrow
+            throw error;
+        }
     }
 });
 
@@ -85,8 +91,14 @@ it('should handle errors in blob upload', async () => {
             await blockStore.get(mockCID);
             expect.fail('Expected error was not thrown');
         } catch (error) {
-            expect(error).to.be.instanceOf(AzureBlobError);
-            expect(error.code).to.equal('DownloadError');
+            if (error instanceof AzureBlobError) {
+                // Now TypeScript knows 'error' is of type 'AzureBlobError'
+                expect(error).to.be.instanceOf(AzureBlobError);
+                expect(error.code).to.equal('UploadError');
+            } else {
+                // Handle other types of errors or rethrow
+                throw error;
+            }
         }
     });
 
@@ -126,8 +138,14 @@ it('should handle errors in blob upload', async () => {
             await blockStore.delete(mockCID);
             expect.fail('Expected error was not thrown');
         } catch (error) {
-            expect(error).to.be.instanceOf(AzureBlobError);
-            expect(error.code).to.equal('DeleteError');
+            if (error instanceof AzureBlobError) {
+                // Now TypeScript knows 'error' is of type 'AzureBlobError'
+                expect(error).to.be.instanceOf(AzureBlobError);
+                expect(error.code).to.equal('UploadError');
+            } else {
+                // Handle other types of errors or rethrow
+                throw error;
+            }
         }
     });
 });
